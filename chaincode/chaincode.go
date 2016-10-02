@@ -54,7 +54,7 @@ var recType = []string{"USER", "CREATECONTR", "BID", "POSTTRAN", "CLOSECONTRACT"
 // The following array holds the list of tables that should be created
 // The deploy/init deletes the tables and recreates them every time a deploy is invoked
 //////////////////////////////////////////////////////////////////////////////////////////////////
-var aucTables = []string{"UserTable", "UserCatTable", "ContractTable", "ContractCatTable", "BidTable", "BidCatTable",  "BidHistoryTable", "TransTable"}
+var aucTables = []string{"UserTable", "UserCatTable", "ContractTable", "ContractCatTable", "ContractOpenTable", "BidTable", "BidCatTable",  "BidHistoryTable", "TransTable"}
 
 ///////////////////////////////////////////////////////////////////////////////////////
 // This creates a record of the Asset (Inventory)
@@ -141,6 +141,7 @@ func GetNumberOfKeys(tname string) int {
 		"ContractTable":    1,
 		"UserCatTable":     2,
 		"ContractCatTable": 2,
+		"ContractOpenTable":2,
 		"BidTable":     	1,
 		"BidCatTable":     	2,
 		"BidHistoryTable":  3,
@@ -984,7 +985,7 @@ func tCompare(t1 string, t2 string) bool {
 //////////////////////////////////////////////////////////
 // Converts JSON String to an ART Object
 //////////////////////////////////////////////////////////
-func JSONtoAR(data []byte) (ItemObject, error) {
+func JSONtoAR(data []byte) (ContractObject, error) {
 
 	ar := ItemObject{}
 	err := json.Unmarshal([]byte(data), &ar)
@@ -998,7 +999,7 @@ func JSONtoAR(data []byte) (ItemObject, error) {
 //////////////////////////////////////////////////////////
 // Converts an ART Object to a JSON String
 //////////////////////////////////////////////////////////
-func ARtoJSON(ar ItemObject) ([]byte, error) {
+func ARtoJSON(ar ContractObject) ([]byte, error) {
 
 	ajson, err := json.Marshal(ar)
 	if err != nil {
@@ -1011,7 +1012,7 @@ func ARtoJSON(ar ItemObject) ([]byte, error) {
 //////////////////////////////////////////////////////////
 // Converts an BID to a JSON String
 //////////////////////////////////////////////////////////
-func ItemLogtoJSON(item ItemLog) ([]byte, error) {
+func ItemLogtoJSON(item ContractObject) ([]byte, error) {
 
 	ajson, err := json.Marshal(item)
 	if err != nil {
@@ -1024,12 +1025,12 @@ func ItemLogtoJSON(item ItemLog) ([]byte, error) {
 //////////////////////////////////////////////////////////
 // Converts an User Object to a JSON String
 //////////////////////////////////////////////////////////
-func JSONtoItemLog(ithis []byte) (ItemLog, error) {
+func JSONtoItemLog(ithis []byte) (ContractObject, error) {
 
-	item := ItemLog{}
+	item := ContractObject{}
 	err := json.Unmarshal(ithis, &item)
 	if err != nil {
-		fmt.Println("JSONtoItemLog error: ", err)
+		fmt.Println("JSONtoContractObject error: ", err)
 		return item, err
 	}
 	return item, err
@@ -1038,7 +1039,7 @@ func JSONtoItemLog(ithis []byte) (ItemLog, error) {
 //////////////////////////////////////////////////////////
 // Converts an Auction Request to a JSON String
 //////////////////////////////////////////////////////////
-func AucReqtoJSON(ar AuctionRequest) ([]byte, error) {
+func AucReqtoJSON(ar ContractObject) ([]byte, error) {
 
 	ajson, err := json.Marshal(ar)
 	if err != nil {
@@ -1051,9 +1052,9 @@ func AucReqtoJSON(ar AuctionRequest) ([]byte, error) {
 //////////////////////////////////////////////////////////
 // Converts an User Object to a JSON String
 //////////////////////////////////////////////////////////
-func JSONtoAucReq(areq []byte) (AuctionRequest, error) {
+func JSONtoAucReq(areq []byte) (ContractObject, error) {
 
-	ar := AuctionRequest{}
+	ar := ContractObject{}
 	err := json.Unmarshal(areq, &ar)
 	if err != nil {
 		fmt.Println("JSONtoAucReq error: ", err)
@@ -1440,53 +1441,20 @@ func GetListOfBids(stub shim.ChaincodeStubInterface, function string, args []str
 
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Get List of Auctions that have been initiated
-// in the block-chain
-// This is a fixed Query to be issued as below
-// ./peer chaincode query -l golang -n mycc -c '{"Function": "GetListOfInitAucs", "Args": ["2016"]}'
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-func GetListOfInitAucs(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte, error) {
-
-	rows, err := GetList(stub, "AucInitTable", args)
-	if err != nil {
-		return nil, fmt.Errorf("GetListOfInitAucs operation failed. Error marshaling JSON: %s", err)
-	}
-
-	nCol := GetNumberOfKeys("AucInitTable")
-
-	tlist := make([]AuctionRequest, len(rows))
-	for i := 0; i < len(rows); i++ {
-		ts := rows[i].Columns[nCol].GetBytes()
-		ar, err := JSONtoAucReq(ts)
-		if err != nil {
-			fmt.Println("GetListOfInitAucs() Failed : Ummarshall error")
-			return nil, fmt.Errorf("getBillForMonth() operation failed. %s", err)
-		}
-		tlist[i] = ar
-	}
-
-	jsonRows, _ := json.Marshal(tlist)
-
-	//fmt.Println("List of Auctions Requested : ", jsonRows)
-	return jsonRows, nil
-
-}
-
 ////////////////////////////////////////////////////////////////////////////
 // Get List of Open Auctions  for which bids can be supplied
 // in the block-chain
 // This is a fixed Query to be issued as below
 // ./peer chaincode query -l golang -n mycc -c '{"Function": "GetListOfOpenAucs", "Args": ["2016"]}'
 ////////////////////////////////////////////////////////////////////////////
-func GetListOfOpenAucs(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte, error) {
+func GetListOfOpenContracts(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte, error) {
 
-	rows, err := GetList(stub, "AucOpenTable", args)
+	rows, err := GetList(stub, "ContractOpenTable", args)
 	if err != nil {
-		return nil, fmt.Errorf("GetListOfOpenAucs operation failed. Error marshaling JSON: %s", err)
+		return nil, fmt.Errorf("GetListOfOpenContracts operation failed. Error marshaling JSON: %s", err)
 	}
 
-	nCol := GetNumberOfKeys("AucOpenTable")
+	nCol := GetNumberOfKeys("ContractOpenTable")
 
 	tlist := make([]AuctionRequest, len(rows))
 	for i := 0; i < len(rows); i++ {
@@ -1863,7 +1831,6 @@ func ProcessQueryResult(stub shim.ChaincodeStubInterface, Avalbytes []byte, args
 		}
 		fmt.Println("ProcessRequestType() : ", ar)
 		return err
-
 	case "CANCELCONTRACT":
 	case "POSTTRAN":
 		atr, err := JSONtoTran(Avalbytes) //
@@ -1944,151 +1911,24 @@ func exe_cmd(cmd string) error {
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Close Open Auctions
-// 1. Read OpenAucTable
-// 2. Compare now with expiry time with now
-// 3. If now is > expiry time call CloseAuction
-//////////////////////////////////////////////////////////////////////////
-
-func CloseOpenAuctions(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte, error) {
-
-	rows, err := GetListOfOpenAucs(stub, "AucOpenTable", []string{"2016"})
-	if err != nil {
-		return nil, fmt.Errorf("GetListOfOpenAucs operation failed. Error marshaling JSON: %s", err)
-	}
-
-	tlist := make([]AuctionRequest, len(rows))
-	err = json.Unmarshal([]byte(rows), &tlist)
-	if err != nil {
-		fmt.Println("Unmarshal failed : ", err)
-	}
-
-	for i := 0; i < len(tlist); i++ {
-		ar := tlist[i]
-		if err != nil {
-			fmt.Println("CloseOpenAuctions() Failed : Ummarshall error")
-			return nil, fmt.Errorf("GetListOfOpenAucs() operation failed. %s", err)
-		}
-
-		fmt.Println("CloseOpenAuctions() ", ar)
-
-		// Compare Auction Times
-		if tCompare(time.Now().Format("2006-01-02 15:04:05"), ar.CloseDate) == false {
-
-			// Request Closing Auction
-			_, err := CloseAuction(stub, "CloseAuction", []string{ar.AuctionID})
-			if err != nil {
-				fmt.Println("CloseOpenAuctions() Failed : Ummarshall error")
-				return nil, fmt.Errorf("GetListOfOpenAucs() operation failed. %s", err)
-			}
-		}
-	}
-
-	return rows, nil
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Close the Auction
-// This is invoked by OpenAuctionForBids
-// which kicks-off a go-routine timer for the duration of the auction
-// When the timer expires, it creates a shell script to CloseAuction() and triggers it
-// This function can also be invoked via CLI - the intent was to close as and when I implement BuyItNow()
-// CloseAuction
-// - Sets the status of the Auction to "CLOSED"
-// - Removes the Auction from the Open Auction list (AucOpenTable)
-// - Retrieves the Highest Bid and creates a Transaction
-// - Posts The Transaction
-//
-// To invoke from Command Line via CLI or REST API
-// ./peer chaincode invoke -l golang -n mycc -c '{"Function": "CloseAuction", "Args": ["1111", "AUCREQ"]}'
-// ./peer chaincode invoke -l golang -n mycc -c '{"Function": "CloseAuction", "Args": ["1111", "AUCREQ"]}'
-//
-//////////////////////////////////////////////////////////////////////////
-
-func CloseAuction(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte, error) {
-
-	// Close The Auction -  Fetch Auction Object
-	Avalbytes, err := QueryLedger(stub, "AuctionTable", []string{args[0], "AUCREQ"})
-	if err != nil {
-		fmt.Println("CloseAuction(): Auction Object Retrieval Failed ")
-		return nil, errors.New("CloseAuction(): Auction Object Retrieval Failed ")
-	}
-
-	aucR, err := JSONtoAucReq(Avalbytes)
-	if err != nil {
-		fmt.Println("CloseAuction(): Auction Object Unmarshalling Failed ")
-		return nil, errors.New("CloseAuction(): Auction Object UnMarshalling Failed ")
-	}
-
-	//  Update Auction Status
-	aucR.Status = "CLOSED"
-	fmt.Println("CloseAuction(): UpdateAuctionStatus() successful ", aucR)
-
-	Avalbytes, err = UpdateAuctionStatus(stub, "AuctionTable", aucR)
-	if err != nil {
-		fmt.Println("CloseAuction(): UpdateAuctionStatus() Failed ")
-		return nil, errors.New("CloseAuction(): UpdateAuctionStatus() Failed ")
-	}
-
-	// Remove the Auction from Open Bucket
-	keys := []string{"2016", aucR.AuctionID}
-	err = DeleteFromLedger(stub, "AucOpenTable", keys)
-	if err != nil {
-		fmt.Println("CloseAuction(): DeleteFromLedger(AucOpenTable) Failed ")
-		return nil, errors.New("CloseAuction(): DeleteFromLedger(AucOpenTable) Failed ")
-	}
-
-	fmt.Println("CloseAuction(): Proceeding to process the highest bid ")
-
-	// Process Final Bid - Turn it into a Transaction
-	Avalbytes, err = GetHighestBid(stub, "GetHighestBid", []string{args[0]})
-	if Avalbytes == nil {
-		fmt.Println("CloseAuction(): No bids available, no change in Item Status - PostTransaction() Completed Successfully ")
-		return Avalbytes, nil
-	}
-
-	if err != nil {
-		fmt.Println("CloseAuction(): No bids available, error encountered - PostTransaction() failed ")
-		return nil, err
-	}
-
-	bid, _ := JSONtoBid(Avalbytes)
-	fmt.Println("CloseAuction(): Proceeding to process the highest bid ", bid)
-	tran := BidtoTransaction(bid)
-	fmt.Println("CloseAuction(): Converting Bid to tran ", tran)
-
-	// Process the last bid once Time Expires
-	tranArgs := []string{tran.AuctionID, tran.RecType, tran.ItemID, tran.TransType, tran.UserId, tran.TransDate, tran.HammerTime, tran.HammerPrice, tran.Details}
-	fmt.Println("CloseAuction(): Proceeding to process the  Transaction ", tranArgs)
-
-	Avalbytes, err = PostTransaction(stub, "PostTransaction", tranArgs)
-	if err != nil {
-		fmt.Println("CloseAuction(): PostTransaction() Failed ")
-		return nil, errors.New("CloseAuction(): PostTransaction() Failed ")
-	}
-	fmt.Println("CloseAuction(): PostTransaction() Completed Successfully ")
-	return Avalbytes, nil
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Update the Auction Object
 // This function updates the status of the auction
 // from INIT to OPEN to CLOSED
 //////////////////////////////////////////////////////////////////////////
 
-func CloseContract(stub shim.ChaincodeStubInterface, tableName string, ar AuctionRequest) ([]byte, error) {
+func UpdateContractStatus(stub shim.ChaincodeStubInterface, tableName string, ar AuctionRequest) ([]byte, error) {
 
 	buff, err := AucReqtoJSON(ar)
 	if err != nil {
-		fmt.Println("CloseContract() : Failed Cannot create object buffer for write : ", ar.AuctionID)
-		return nil, errors.New("CloseContract(): Failed Cannot create object buffer for write : " + ar.AuctionID)
+		fmt.Println("UpdateContractStatus() : Failed Cannot create object buffer for write : ", ar.AuctionID)
+		return nil, errors.New("UpdateContractStatus(): Failed Cannot create object buffer for write : " + ar.AuctionID)
 	}
 
 	// Update the ledger with the Buffer Data
 	keys := []string{ar.AuctionID, ar.ItemID}
 	err = ReplaceLedgerEntry(stub, "ContractTable", keys, buff)
 	if err != nil {
-		fmt.Println("CloseContract() : write error while inserting record\n")
+		fmt.Println("UpdateContractStatus() : write error while inserting record\n")
 		return buff, err
 	}
 	return buff, err
